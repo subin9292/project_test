@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HowsTheWeather</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            const weatherApiKey = 'a71cf8f55278a20a0840a3e6fcba9384';
+            let lat = {{ lat if lat else 36.642434 }};
+            let lon = {{ lon if lon else 127.489031 }};
+            let placeName = '{{ place if place else "청주시 서원구" }}';
+javascript
+코드 복사
+        function updateWeatherData(lat, lon, placeName) {
+            // 지역 이름 업데이트
+            $('#location-name').text(placeName);
+
+            // 현재 날씨 데이터 가져오기
+            $.getJSON(`http://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=metric`, function(data) {
+                var minTemp = data.main.temp_min.toFixed(1);
+                var maxTemp = data.main.temp_max.toFixed(1);
+                var currentTemp = data.main.temp.toFixed(1);
+                var weatherIcon = data.weather[0].icon;
+                var now = new Date();
+                var formattedDate = now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate() + ' ' + now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+
+                $('.low-temp').text(minTemp + '°C');
+                $('.high-temp').text(maxTemp + '°C');
+                $('#current-temp').text(currentTemp + '°C');
+                $('.weather-icon').html('<img src="https://openweathermap.org/img/wn/' + weatherIcon + '@2x.png" alt="Weather Icon">');
+                $('#current-date').text(formattedDate);
+            });
+
+            // 주간 예보 데이터 가져오기
+            $.getJSON(`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=hourly,minutely,current,alerts&appid=${weatherApiKey}&units=metric`, function(data) {
+                var weeklyForecastHtml = '';
+                data.daily.forEach(function(day) {
+                    var date = new Date(day.dt * 1000);
+                    var dayOfWeek = `${date.getMonth() + 1}/${date.getDate()} (${['일', '월', '화', '수', '목', '금', '토'][date.getDay()]})`;
+                    var temp = day.temp.day.toFixed(1);
+                    var weatherDescription = translateWeatherDescription(day.weather[0].description);
+                    var weatherIcon = day.weather[0].icon;
+                    weeklyForecastHtml += `<li>${dayOfWeek}: ${temp}°C, ${weatherDescription} <img src="https://openweathermap.org/img/wn/${weatherIcon}.png" alt="Weather Icon"></li>`;
+                });
+                $('#weekly-forecast').html(weeklyForecastHtml);
+            }).fail(function(jqxhr, textStatus, error) {
+                var err = textStatus + ", " + error;
+                console.log("주간 예보 요청 실패: " + err); // 에러 로그 확인
+                $('#weekly-forecast').html('<li>주간 예보 데이터를 불러오는 데 실패했습니다.</li>');
+            });
+
+            // 시간별 예보 데이터 가져오기
+            $.getJSON(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=metric`, function(data) {
+                var hourlyForecastHtml = '';
+                data.list.slice(0, 5).forEach(function(hour) {
+                    var date = new Date(hour.dt * 1000);
+                    var hours = date.getHours();
+                    var temp = hour.main.temp.toFixed(1);
+                    var weatherIcon = hour.weather[0].icon;
+                    hourlyForecastHtml += `<li>${hours}시: ${temp}°C <img src="https://openweathermap.org/img/wn/' + weatherIcon + '.png" alt="Weather Icon"></li>`;
+                });
+                $('#hourly-forecast').html(hourlyForecastHtml);
+            });
+
+            // 현재 위치의 댓글 가져오기
+            $.getJSON(`/comments/${placeName}`, function(data) {
+                var commentsHtml = '';
+                data.comments.forEach(function(comment) {
+                    commentsHtml += `<li><strong>${comment.name}</strong>: ${comment.comment}</li>`;
+                });
+                $('#comments-list').html(commentsHtml);
+            });
+        }
+
+        // 초기 로딩 시 청주시 서원구의 데이터 가져오기
+        updateWeatherData(lat, lon, placeName);
+
+        // 검색 결과에서 새로운 지역 선택 시 데이터 업데이트
+        $(document).on('click', '#search-results li', function() {
+            const placeName = $(this).text();
+            $.getJSON(`/coordinates?place=${placeName}`, function(data) {
+                if (data.coordinates) {
+                    lat = data.coordinates.lat;
+                    lon = data.coordinates.lon;
+                    window.location.href = `/comments/${placeName}?lat=${lat}&lon=${lon}&place=${placeName}`;
+                }
+            });
+        });
+
+        function translateWeatherDescription(description) {
+            const descriptions = {
+                "clear sky": "맑음",
+                "few clouds": "구름 조금",
+                "scattered clouds": "구름 낌",
+                "broken clouds": "구름 많음",
+                "shower rain": "소나기",
+                "rain": "비",
+                "thunderstorm": "천둥번개",
+                "snow": "눈",
+                "mist": "안개",
+                "light rain": "약한 비",
+                "moderate rain": "보통 비",
+                "heavy intensity rain": "강한 비",
+                "overcast clouds": "흐림"
+            };
+            return descriptions[description] || description;
+        }
+    });
+</script>
+</head>
+<body>
+    <header>
+        <div class="logo">HowsTheWeather</div>
+        <div class="location">
+            <span class="location-icon">📍</span>
+            <span id="location-name">{{ region }}</span>
+        </div>
+        <a href="/location_search" class="search-location">지역검색</a>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="#">About Us</a></li>
+            <li><a href="#">Contact</a></li>
+        </ul>
+    </nav>
+    <main>
+        <section class="main-content">
+            <div class="current-weather">
+                <h1>현재 날씨</h1>
+                <div class="temperature-range">
+                    <span class="low-temp"></span> ~ <span class="high-temp"></span>
+                </div>
+                <div class="current-temp">
+                    <span id="current-temp"></span>
+                    <span class="weather-icon"></span>
+                </div>
+                <div id="current-date"></div>
+            </div>
+            <div class="live-comments">
+                <h2>실시간 댓글</h2>
+                <h3>{{ region }} 지역의 댓글</h3>
+                <ul id="comments-list">
+                    {% for comment in comments %}
+                    <li><strong>{{ comment.name }}</strong>: {{ comment.comment }}</li>
+                    {% endfor %}
+                </ul>
+                <form id="comment-form" method="post" action="/comments/{{ region }}/add?lat={{ lat }}&lon={{ lon }}&place={{ region }}">
+                    <input type="text" id="comment-name" name="name" placeholder="이름" required>
+                    <input type="text" id="comment-input" name="comment" placeholder="댓글을 입력하세요..." required>
+                    <button type="submit">댓글 달기</button>
+                </form>
+            </div>
+        </section>
+        <section class="forecast">
+            <div class="weekly-forecast">
+                <h2>주간예보</h2>
+                <ul id="weekly-forecast"></ul>
+            </div>
+            <div class="hourly-forecast">
+                <h2>시간별 예보</h2>
+                <ul id="hourly-forecast"></ul>
+            </div>
+        </section>
+    </main>
+    <script src="/static/script.js"></script>
+</body>
+</html>
